@@ -4,9 +4,10 @@ jobs:
   proxy:
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - name: Call OpenAI
+        run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.OPENAI_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"${{ github.event.inputs.prompt }}"}]}' \
+            -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"Test prompt"}]}' \
             https://api.openai.com/v1/chat/completions
