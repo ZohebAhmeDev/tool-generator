@@ -1,76 +1,73 @@
-// script.js - Secure Version for GitHub Pages
 document.addEventListener('DOMContentLoaded', () => {
   const userInput = document.getElementById('userInput');
   const generateBtn = document.getElementById('generateBtn');
   const captionResult = document.getElementById('captionResult');
-  const keyStatus = document.createElement('div');
-  keyStatus.className = 'key-status';
-  document.body.prepend(keyStatus);
+  
+  // 1. FIRST TRY: GitHub Pages Proxy
+  async function tryGitHubProxy(prompt) {
+    try {
+      const response = await fetch('/api/proxy', {  // Relative path for GH Pages
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      return await response.json();
+    } catch (error) {
+      console.log("GitHub proxy failed, trying fallback...");
+      return null;
+    }
+  }
 
-  // Check for GitHub Actions proxy
-  let usingGitHubProxy = false;
+  // 2. FALLBACK: Direct API with local key
+  async function tryLocalKey(prompt) {
+    let key = localStorage.getItem('OPENAI_KEY');
+    if (!key) {
+      key = prompt('🔐 Enter your OpenAI API key (from platform.openai.com/api-keys):');
+      if (!key) throw new Error('No key provided');
+      localStorage.setItem('OPENAI_KEY', key);
+    }
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [{
+          role: "user",
+          content: `Generate 3 Instagram captions about "${prompt}". Use emojis. Max 15 words each.`
+        }]
+      })
+    });
+    return await response.json();
+  }
 
   generateBtn.addEventListener('click', async () => {
     const prompt = userInput.value.trim();
-    
     if (!prompt) {
       captionResult.textContent = "⚠️ Please enter a topic!";
       return;
     }
 
-    captionResult.textContent = "Generating... ⏳";
+    captionResult.innerHTML = "Generating... ⏳";
     generateBtn.disabled = true;
 
     try {
-      // Try GitHub Actions proxy first
-      const response = await fetch('https://your-github-username.github.io/your-repo/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt })
-      });
-
-      if (!response.ok) throw new Error('GitHub proxy failed');
+      // Try GitHub proxy first
+      let result = await tryGitHubProxy(prompt);
       
-      const data = await response.json();
-      captionResult.innerHTML = data.choices[0].message.content.replace(/\n/g, "<br>");
-      usingGitHubProxy = true;
-      keyStatus.textContent = "🔒 Using secure GitHub proxy";
-      keyStatus.style.color = "green";
-
+      // Fallback to local key if needed
+      if (!result) result = await tryLocalKey(prompt);
+      
+      captionResult.innerHTML = result.choices[0].message.content.replace(/\n/g, "<br>");
     } catch (error) {
-      // Fallback to local key if proxy fails
-      if (!localStorage.getItem('OPENAI_KEY')) {
-        const key = prompt('🔑 Enter your OpenAI key (or setup GitHub Secrets for auto-proxy):');
-        if (key) localStorage.setItem('OPENAI_KEY', key);
-      }
-
-      if (localStorage.getItem('OPENAI_KEY')) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('OPENAI_KEY')}`
-          },
-          body: JSON.stringify({
-            model: "gpt-3.5-turbo",
-            messages: [{
-              role: "user",
-              content: `Generate 3 Instagram captions about "${prompt}". Use emojis. Max 15 words each.`
-            }]
-          })
-        });
-        
-        const data = await response.json();
-        captionResult.innerHTML = data.choices[0].message.content.replace(/\n/g, "<br>");
-        keyStatus.textContent = "⚠️ Using local key (setup GitHub Secrets for better security)";
-        keyStatus.style.color = "orange";
-      } else {
-        captionResult.innerHTML = `🔴 <strong>Setup required:</strong><br>
-          1. <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI key</a><br>
-          2. Add to GitHub Secrets (recommended) or paste here temporarily`;
-      }
+      captionResult.innerHTML = `❌ Error: ${error.message}<br><br>
+        Solutions:<br>
+        1. <a href="https://platform.openai.com/api-keys" target="_blank">Get free API key</a><br>
+        2. Paste it when prompted<br>
+        3. <a href="https://docs.github.com/en/actions/security-guides/encrypted-secrets" target="_blank">Or setup GitHub Secrets</a>`;
     } finally {
       generateBtn.disabled = false;
     }
